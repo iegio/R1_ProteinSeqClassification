@@ -58,7 +58,29 @@ training_args = TrainingArguments(
     output_dir="output"
 )
 
-trainer = Trainer(
+
+class NewTrainer(Trainer):
+    def establish_loss_weights(self):
+        loss_vals = [
+            (float(1184)/2732),  # 0 (negative)
+            1 - (float(1184)/2732),  # 1 (positive)
+            0.0,  # 3 padding token
+        ]
+        
+        self.loss_weights = torch.Tensor(loss_vals).cuda()
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        outputs = model(**inputs)
+        logits = outputs["logits"].cuda().float()
+
+        labels_tensor = torch.tensor(inputs["labels"]).float().cuda()
+        labels_tensor = torch.transpose(labels_tensor, 1, 2)
+
+        loss_fct = torch.nn.CrossEntropyLoss(weight=self.loss_weights)
+        loss = loss_fct(logits, labels_tensor)
+        return (loss, outputs) if return_outputs else loss
+
+trainer = NewTrainer(
     model=model,  # the instantiated 🤗 Transformers model to be trained
     args=training_args,  # training arguments, defined above
     train_dataset=train_dataset,  # training dataset
@@ -66,6 +88,8 @@ trainer = Trainer(
     compute_metrics=compute_metrics
     # eval_steps
 )
+
+trainer.establish_loss_weights()
 
 _ = trainer.train()
 
