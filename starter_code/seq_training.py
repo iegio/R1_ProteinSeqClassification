@@ -5,11 +5,13 @@ import transformers
 from torch.utils.data import Dataset
 from datasets import load_metric
 import numpy as np
+from torch import nn
 
 def tokenize_data(data):
     return tokenizer(data['sequence'], padding='max_length')
 
 metric = load_metric("accuracy")
+
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
@@ -24,10 +26,12 @@ from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
     Trainer,
-    TrainingArguments
+    TrainingArguments,
+    BertTokenizer
 )
 
 tokenizer = AutoTokenizer.from_pretrained("Rostlab/prot_bert_bfd")
+
 model = AutoModelForSequenceClassification.from_pretrained(
     "Rostlab/prot_bert_bfd",
      num_labels = 2
@@ -58,26 +62,23 @@ training_args = TrainingArguments(
     output_dir="output"
 )
 
-
 class NewTrainer(Trainer):
     def establish_loss_weights(self):
         loss_vals = [
             (float(1184)/2732),  # 0 (negative)
             1 - (float(1184)/2732),  # 1 (positive)
-            0.0,  # 3 padding token
         ]
         
         self.loss_weights = torch.Tensor(loss_vals).cuda()
 
     def compute_loss(self, model, inputs, return_outputs=False):
+        labels = inputs.pop("labels")
+        # forward pass
         outputs = model(**inputs)
-        logits = outputs["logits"].cuda().float()
-
-        labels_tensor = torch.tensor(inputs["labels"]).float().cuda()
-        labels_tensor = torch.transpose(labels_tensor, 1, 2)
-
-        loss_fct = torch.nn.CrossEntropyLoss(weight=self.loss_weights)
-        loss = loss_fct(logits, labels_tensor)
+        logits = outputs.get("logits")
+        # compute custom loss
+        loss_fct = nn.CrossEntropyLoss(weight=torch.tensor(self.loss_weights, device=model.device))
+        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
         return (loss, outputs) if return_outputs else loss
 
 trainer = NewTrainer(
@@ -86,7 +87,6 @@ trainer = NewTrainer(
     train_dataset=train_dataset,  # training dataset
     eval_dataset=test_dataset,  # evaluation dataset
     compute_metrics=compute_metrics
-    # eval_steps
 )
 
 trainer.establish_loss_weights()
