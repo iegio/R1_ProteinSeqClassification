@@ -6,6 +6,9 @@ import sys
 counter_matched = 0
 counter_unmatched = 0
 
+def split_seqs(seq_list):
+    return [' '.join(AA for AA in seq) for seq in seq_list]
+
 def wt_match(mut_loc, protein_seq):
     global counter_matched
     global counter_unmatched
@@ -27,8 +30,8 @@ def swap_seq_location(mut_loc, protein_seq):
 
     return protein_seq
 
-sequences = pd.read_csv("all_DRGN_seqs.csv", index_col=0)
-labels = pd.read_csv("DRGN.txt", sep="\t", header=None, names=["identifier", "location", "label"])
+sequences = pd.read_csv("data/all_DRGN_seqs.csv", index_col=0)
+labels = pd.read_csv("data/DRGN.txt", sep="\t", header=None, names=["identifier", "location", "label"])
 
 # extract the rows we care about
 label_identifiers = labels["identifier"].unique()
@@ -67,5 +70,9 @@ print("unmatched: " + str(counter_unmatched))
 testing_df = traintestdf.copy().sample(frac = 0.1, replace=False)
 training_df = traintestdf.drop(testing_df.index)
 
-testing_df.to_csv("testing_data.csv")
-training_df.to_csv("training_data.csv")
+# reformat sequences
+testing_df["sequence"] = split_seqs(testing_df["sequence"])
+training_df["sequence"] = split_seqs(training_df["sequence"])
+
+testing_df.to_csv("data/testing_data.csv")
+training_df.to_csv("data/training_data.csv")

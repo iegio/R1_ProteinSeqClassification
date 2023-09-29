@@ -7,8 +7,11 @@ from datasets import load_metric
 import numpy as np
 from torch import nn
 
+def split_seqs(seq_list):
+    return [' '.join(AA for AA in seq) for seq in seq_list]
+
 def tokenize_data(data):
-    return tokenizer(data['sequence'], padding='max_length')
+    return tokenizer(data["sequence"], padding="max_length", max_length=5000)
 
 metric = load_metric("accuracy")
 
@@ -50,8 +53,8 @@ dataset = dataset.map(tokenize_data, batched=True)
 dataset = dataset.remove_columns(["Unnamed: 0", "identifier", "mut", "gene"])
 
 # split
-train_dataset = dataset["train"].shuffle(seed=10)
-test_dataset = dataset["test"].shuffle(seed=10)
+df_train = dataset["train"].shuffle(seed=10)
+df_test = dataset["test"].shuffle(seed=10)
 
 training_args = TrainingArguments(
     per_device_train_batch_size=4,
@@ -63,10 +66,10 @@ training_args = TrainingArguments(
 )
 
 class NewTrainer(Trainer):
-    def establish_loss_weights(self):
+    def establish_loss_weights(self, positive_pct):
         loss_vals = [
-            (float(1184)/2732),  # 0 (negative)
-            1 - (float(1184)/2732),  # 1 (positive)
+            positive_pct,  # 0 (negative)
+            1 - positive_pct,  # 1 (positive)
         ]
         
         self.loss_weights = torch.Tensor(loss_vals).cuda()
@@ -84,12 +87,13 @@ class NewTrainer(Trainer):
 trainer = NewTrainer(
     model=model,  # the instantiated 🤗 Transformers model to be trained
     args=training_args,  # training arguments, defined above
-    train_dataset=train_dataset,  # training dataset
-    eval_dataset=test_dataset,  # evaluation dataset
+    train_dataset=df_train,  # training dataset
+    eval_dataset=df_test,  # evaluation dataset
     compute_metrics=compute_metrics
 )
 
-trainer.establish_loss_weights()
+positive_pct = float(np.sum(df_train["label"])) / len(df_train["label"])
+trainer.establish_loss_weights(positive_pct)
 
 _ = trainer.train()
 
