@@ -11,7 +11,7 @@ def split_seqs(seq_list):
     return [' '.join(AA for AA in seq) for seq in seq_list]
 
 def tokenize_data(data):
-    return tokenizer(data["sequence"], padding="max_length", max_length=5000)
+    return tokenizer(data["sequence"], padding="max_length", max_length=512)
 
 metric = load_metric("accuracy")
 
@@ -84,7 +84,7 @@ class NewTrainer(Trainer):
         loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
         return (loss, outputs) if return_outputs else loss
 
-trainer = NewTrainer(
+trainer = Trainer(
     model=model,  # the instantiated 🤗 Transformers model to be trained
     args=training_args,  # training arguments, defined above
     train_dataset=df_train,  # training dataset
@@ -92,8 +92,8 @@ trainer = NewTrainer(
     compute_metrics=compute_metrics
 )
 
-positive_pct = float(np.sum(df_train["label"])) / len(df_train["label"])
-trainer.establish_loss_weights(positive_pct)
+# positive_pct = float(np.sum(df_train["label"])) / len(df_train["label"])
+# trainer.establish_loss_weights(positive_pct)
 
 _ = trainer.train()
 

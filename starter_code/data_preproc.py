@@ -1,8 +1,6 @@
 import pandas as pd
 import numpy as np
 
-import sys
-
 counter_matched = 0
 counter_unmatched = 0
 
@@ -65,6 +63,12 @@ for i in label_identifiers:
             
 print("matched: " + str(counter_matched))
 print("unmatched: " + str(counter_unmatched))
+
+# eliminate proteins with > 500 AA
+max_len = 512
+print(traintestdf.shape[0])
+traintestdf = traintestdf[traintestdf['sequence'].str.len() <= max_len]
+print(traintestdf.shape[0])
 
 # randomly subsample rows for training/testing
 testing_df = traintestdf.copy().sample(frac = 0.1, replace=False)
