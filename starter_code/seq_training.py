@@ -19,9 +19,9 @@ def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
-    np.save("tmp/logits", logits)
-    np.save("tmp/labels", labels)
-    np.save("tmp/predictions", predictions)
+    np.save("tmp/genesplit/logits", logits)
+    np.save("tmp/genesplit/labels", labels)
+    np.save("tmp/genesplit/predictions", predictions)
 
     return metric.compute(predictions=predictions, references=labels)
 
@@ -44,7 +44,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 model.to(device)
 
 # load datasets
-dataset = load_dataset('csv', data_files={'train': 'data/training_data.csv', 'test': 'data/testing_data.csv'})
+dataset = load_dataset('csv', data_files={'train': 'data/genesplit_training_data.csv', 'test': 'data/genesplit_testing_data.csv'})
 
 # tokenize
 dataset = dataset.map(tokenize_data, batched=True)

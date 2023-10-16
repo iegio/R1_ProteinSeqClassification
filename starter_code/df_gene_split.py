@@ -14,7 +14,7 @@ def split_df(df, min_thresh, max_thresh):
     while(curr_length > max_thresh * df.shape[0]):
         curr_length = 0
         selected_genes = []
-        gene_names = gene_names_original
+        gene_names = gene_names_original.tolist()
 
         # make sure we have enough sequences in the test dataset
         while(curr_length < min_thresh * df.shape[0]):
@@ -28,7 +28,7 @@ def split_df(df, min_thresh, max_thresh):
             selected_genes.append(my_gene)
             gene_names.remove(my_gene)
     
-    test_df = df[df["gene"] == selected_genes]
+    test_df = df[df["gene"].isin(selected_genes)]
     train_df = df.drop(test_df.index)
     
     return train_df, test_df
@@ -43,5 +43,8 @@ max_thresh = 0.2
 
 train_df, test_df = split_df(df, min_thresh, max_thresh)
 
-testing_df.to_csv("data/genesplit_testing_data.csv")
-training_df.to_csv("data/gensplit_training_data.csv")
+print(test_df.size)
+print(train_df.size)
+
+test_df.to_csv("data/genesplit_testing_data.csv")
+train_df.to_csv("data/genesplit_training_data.csv")
