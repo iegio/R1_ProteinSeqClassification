@@ -4,4 +4,4 @@
 #SBATCH --mem=512G
 #SBATCH --cpus-per-task=4
 
-python multi_bert.py
+python multi_bert_oct.py

@@ -34,7 +34,7 @@ def split_df(df, min_thresh, max_thresh):
     return train_df, test_df
 
 
-df = pd.concat([pd.read_csv("data/testing_data.csv", index_col = 0), pd.read_csv("data/training_data.csv", index_col = 0)], ignore_index=True)
+df = pd.concat([pd.read_csv("data/test_df.csv", index_col = 0), pd.read_csv("data/train_df.csv", index_col = 0)], ignore_index=True)
 
 train_len = 0.0
 total_len = df.shape[0]
@@ -43,8 +43,7 @@ max_thresh = 0.2
 
 train_df, test_df = split_df(df, min_thresh, max_thresh)
 
-print(test_df.size)
-print(train_df.size)
+print(float(test_df.size[0])/(test_df.size[0] + train_df.size[0]))
 
-test_df.to_csv("data/genesplit_testing_data.csv")
-train_df.to_csv("data/genesplit_training_data.csv")
+test_df.to_csv("data/genesplit_test_df.csv")
+train_df.to_csv("data/genesplit_train_df.csv")

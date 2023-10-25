@@ -78,5 +78,5 @@ training_df = traintestdf.drop(testing_df.index)
 testing_df["sequence"] = split_seqs(testing_df["sequence"])
 training_df["sequence"] = split_seqs(training_df["sequence"])
 
-testing_df.to_csv("data/testing_data.csv")
-training_df.to_csv("data/training_data.csv")
+testing_df.to_csv("data/test_df.csv")
+training_df.to_csv("data/train_df.csv")

@@ -2,13 +2,11 @@ import torch
 import datasets
 from datasets import load_dataset
 import transformers
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from datasets import load_metric
 import numpy as np
 from torch import nn
-
-def split_seqs(seq_list):
-    return [' '.join(AA for AA in seq) for seq in seq_list]
+import time
 
 def tokenize_data(data):
     return tokenizer(data["sequence"], padding="max_length", max_length=512)
@@ -19,9 +17,9 @@ def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
-    np.save("tmp/genesplit/logits", logits)
-    np.save("tmp/genesplit/labels", labels)
-    np.save("tmp/genesplit/predictions", predictions)
+    np.save("out/genesplit/logits", logits)
+    np.save("out/genesplit/labels", labels)
+    np.save("out/genesplit/predictions", predictions)
 
     return metric.compute(predictions=predictions, references=labels)
 
@@ -44,7 +42,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 model.to(device)
 
 # load datasets
-dataset = load_dataset('csv', data_files={'train': 'data/genesplit_training_data.csv', 'test': 'data/genesplit_testing_data.csv'})
+dataset = load_dataset('csv', data_files={'train': 'data/genesplit_train_df.csv', 'test': 'data/genesplit_test_df.csv'})
 
 # tokenize
 dataset = dataset.map(tokenize_data, batched=True)
@@ -62,7 +60,7 @@ training_args = TrainingArguments(
     fp16=False,
     save_strategy="no",
     weight_decay=0.015,
-    output_dir="output"
+    output_dir="out"
 )
 
 class NewTrainer(Trainer):
@@ -79,12 +77,17 @@ class NewTrainer(Trainer):
         # forward pass
         outputs = model(**inputs)
         logits = outputs.get("logits")
+
         # compute custom loss
+        print(logits.shape)
+        print(labels.shape)
+        print(logits.view(-1, self.model.config.num_labels).shape)
+
         loss_fct = nn.CrossEntropyLoss(weight=torch.tensor(self.loss_weights, device=model.device))
-        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
+        loss = loss_fct(logits.view(4, self.model.config.num_labels), labels.view(-1))
         return (loss, outputs) if return_outputs else loss
 
-trainer = Trainer(
+trainer = NewTrainer(
     model=model,  # the instantiated 🤗 Transformers model to be trained
     args=training_args,  # training arguments, defined above
     train_dataset=df_train,  # training dataset
@@ -92,10 +95,9 @@ trainer = Trainer(
     compute_metrics=compute_metrics
 )
 
-# positive_pct = float(np.sum(df_train["label"])) / len(df_train["label"])
-# trainer.establish_loss_weights(positive_pct)
+positive_pct = float(np.sum(df_train["label"])) / len(df_train["label"])
+trainer.establish_loss_weights(positive_pct)
 
 _ = trainer.train()
 
-# evaluate
 trainer.evaluate()

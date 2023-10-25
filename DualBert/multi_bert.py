@@ -17,13 +17,23 @@ import torch.nn as nn
 from torch.optim import AdamW
 import copy
 from datasets import load_dataset
+from datasets import load_metric
  
 def tokenize_data(data):
-    tokens1 = data["wt"].apply(lambda x: tokenizer(x, padding="max_length", max_length=512))
-    tokens2 = data["mut"].apply(lambda x: tokenizer(x, padding="max_length", max_length=512))
+    tokens1 = data["wt"].apply(
+        lambda x: tokenizer(x.split(" "), is_split_into_words=True,  return_tensors = "pt", padding="max_length", max_length=512)
+    )
+
+    tokens2 = data["mut"].apply(
+        lambda x: tokenizer(x.split(" "), is_split_into_words=True, return_tensors = "pt", padding="max_length", max_length=512)
+    )
+
     return tokens1, tokens2
 
+metric = load_metric("accuracy")
+
 def compute_metrics(eval_pred):
+    print("here")
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
@@ -36,87 +46,36 @@ def compute_metrics(eval_pred):
 class DualBertForClassification(nn.Module):
     def __init__(self, bert_model_a, bert_model_b):
         super(DualBertForClassification, self).__init__()
-        
+        self.num_labels = 2
+        self.batch_size = 4
+
         self.bert_model_wt = bert_model_a
         self.bert_model_mutant = bert_model_b
-
-        # wildtype_hidden_states = bert_model_a.last_hidden_state
-        # mutant_hidden_states = bert_model_b.last_hidden_state
-
-        # concatenated_hidden_states = torch.cat([wildtype_hidden_states, mutant_hidden_states], dim=-1)
-
-        # nn.Linear(in_features=1024, out_features=2, bias=True)
-
-
+        
         # Define the feed-forward layer
-        self.linear1 = nn.Linear(2048, 2048)
-        # self.classifier = nn.Sequential(
-        #     ,
-        # )
-
-        # self.linear1 = nn.Linear(...)
-        # self.linear2 = nn.Linear(...)
-
-        ##############################
+        self.linear1 = nn.Linear(1024, 4096)
         
-        # TODO : attach the clasification head 
-        #  (pooler): BertPooler(
-        #     (dense): Linear(in_features=1024, out_features=1024, bias=True)
-        #     (activation): Tanh()
-        #     )
-        # )
-        # (dropout): Dropout(p=0.0, inplace=False)
-        # (classifier): Linear(in_features=1024, out_features=2, bias=True)
-
-        ##############################
-        
-        ### This is an example of transforming from this  to [batch_sz, 1], 
-        ### Ignore Below this vv
-        ### FOR EXAMPLE ONLY, DELETE ALL OF THIS BELOW 
-        # self.layer_1 = nn.Linear(1024, 512)
-        # self.layer_2 = nn.Linear(512, 128)
-        # self.layer_3 = nn.Linear(128, 16)
-        # self.layer_4 = nn.Linear(16, 1)
+        self.linear2 = nn.Linear(1024 * 4096, self.num_labels)
 
     def forward(self, x):
         # wild type input, mutant input
         (x_a, x_b) = x
-
+        
         # concatenate
         x = torch.cat(
             (
-                self.bert_model_wt(**x_a), # [batch_sz, sequence_sz, 1024]
-                self.bert_model_mutant(**x_b) # [batch_sz, sequence_sz, 1024]
+                self.bert_model_wt(**x_a).last_hidden_state,
+                self.bert_model_mutant(**x_b).last_hidden_state
             ), 
             1
-        )  # [batch_sz, 2*sequence_sz, 1024]
-
+        )
+        
+        # apply layer
         x = torch.tanh(self.linear1(x))
 
-        # x = self.linear_1(in_features=1024, out_features=1024, bias=True)
-        # x = 0
-
-        ##############################
-
-        # TODO : make the forward pass with the new classififcation head
-        #  (pooler): BertPooler(
-        #     (dense): Linear(in_features=1024, out_features=1024, bias=True)
-        #     (activation): Tanh()
-        #     )
-        # )
-        # (dropout): Dropout(p=0.0, inplace=False)
-        # (classifier): Linear(in_features=1024, out_features=2, bias=True)
-        
-        
-        ##############################
-
-        ### This is an example of transforming from this  to [batch_sz, 1], 
-        ### FOR EXAMPLE ONLY, DELETE ALL OF THIS BELOW 
-        # x = torch.tanh(self.layer_1(x)) # [batch_sz, 2*sequence_sz, 512, ]
-        # x = torch.tanh(self.layer_2(x)) # [batch_sz, 2*sequence_sz, 128, ]
-        # x = torch.tanh(self.layer_3(x)) # [batch_sz, 2*sequence_sz, 16, ]
-        # x = torch.tanh(self.layer_4(x)) # [batch_sz, 2*sequence_sz, 1, ]
-        # x = torch.mean(x, dim = 1)  # [batch_sz, 1]
+        # do transformation
+        x = x.view(list(x.shape)[0], -1)
+        x = torch.tanh(self.linear2(x))
         return x
     
 
@@ -131,41 +90,87 @@ class DualSequenceDataset(Dataset):
 
     # output is a dictionary, not a tuple
     def __getitem__(self, idx):
-        print(self.sequences_wt[idx])
         item = {"x": (self.sequences_wt[idx].data, self.sequences_mut[idx].data)}
         item['label'] = torch.tensor(self.labels[idx])
         return item
+    
 
-        # seq_pair = (self.sequences_wt[idx], self.sequences_mut[idx])
-        # label = self.labels[idx]
-        # return seq_pair, label
+class MyTrainer(Trainer):
 
+    def my_collate_fn(self, data_list):
+        key_to_pad_token = {
+            "token_type_ids" : TYPE_ID_PAD_TOKEN,
+            "input_ids" : SEQUENCE_PAD_TOKEN,
+            "attention_mask" : ATTENTION_MASK_PAD_TOKEN
+        }
+        lengths = [entry["x"][0]["input_ids"].shape[1] for entry in data_list]
+        mx = np.max(lengths)
+        y_list = [entry["label"] for entry in data_list]
+        res = {0 : [], 1 : []}
+        wt_inputs = [entry["x"][0] for entry in data_list]
+        mut_inputs = [entry["x"][1] for entry in data_list]
+        for j, data in enumerate([wt_inputs, mut_inputs]):
+            key_to_dtype = {k : v.dtype for (k,v) in data[0].items()}
+            key_to_values= {k : [] for k in data[0].keys()}
+            for entry in data:
+                for key, pad_token in key_to_pad_token.items():
+                    req = mx - entry[key].shape[1]
+                    if req == 0:
+                        key_to_values[key].append(entry[key][0])  #### HUGE : might affect behavior if we do entry[key][0], padding[0] instaed of entry[key], padding
+                    else:
+                        padding = torch.ones(1, req) * pad_token
+                        padded_tensor = torch.cat(
+                            [entry[key][0], padding[0]], #### HUGE : might affect behavior if we do entry[key][0], padding[0] instaed of entry[key], padding
+                            dim = 0
+                        )
+                        padded_tensor = padded_tensor.to(key_to_dtype[key])
+                        key_to_values[key].append(padded_tensor)
+            
+                to_return = {k : torch.stack(v) for (k,v) in key_to_values.items()}
+                res[j] = to_return
+        collated = {"input" : (res[0], res[1]), "label" : torch.Tensor(y_list)}
+        return collated
+    
+    def get_train_dataloader(self):
+        train_dl = DataLoader(train_ds, shuffle=True, batch_size=4, collate_fn=self.my_collate_fn) 
+        return train_dl
+    
+    def get_test_dataloader(self):
+        test_dl = DataLoader(test_ds, shuffle=True, batch_size=4, collate_fn=self.my_collate_fn) 
+        return test_dl
+    
+    def compute_loss(self, model, inputs):
+        x = inputs["input"] # tuple 
+        labels = inputs["label"] # label 
+       
+        logits = model(x)
 
-def main():
-    return
-
+        loss_fct = nn.CrossEntropyLoss()
+        labels = labels.to(torch.int64)
+        loss = loss_fct(logits, labels)
+        return loss
 
 if __name__ == "__main__":
+    global LABEL_PAD_TOKEN
+    global ATTENTION_MASK_PAD_TOKEN
+    global SEQUENCE_PAD_TOKEN
+    global TYPE_ID_PAD_TOKEN
+    global DOMAINS_PAD_TOKEN
 
-    # process data
-    # sequences = pd.read_csv("./data/all_DRGN_seqs.csv", )
-    # id_to_seq = dict(zip(sequences["identifier"].values, sequences["sequence"].values))
-    # variants = pd.read_csv("./data/DRGN.txt", names = ["protein", "variant", "label"], delimiter = "\t")
     model_name = "Rostlab/prot_bert_bfd"
     
-    tokenizer = BertTokenizer.from_pretrained(model_name,  do_lower_case = False)
+    tokenizer = BertTokenizer.from_pretrained(model_name,  do_lower_case = False, num_labels = 2)
+
+    SEQUENCE_PAD_TOKEN = tokenizer.pad_token_id
+    TYPE_ID_PAD_TOKEN = tokenizer.pad_token_type_id
+    LABELS_PAD_TOKEN = -100
+    ATTENTION_MASK_PAD_TOKEN = 0
     
     model1 = BertModel.from_pretrained(model_name)
     model2 = BertModel.from_pretrained(model_name)
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DualBertForClassification(model1, model2).to(device)
-
-    ##############################
-
-    # TODO : use the Trainer class like you've been doing 
-
-    ##############################
 
     # load datasets
     train_df = pd.read_csv("data/train_df.csv")
@@ -177,8 +182,6 @@ if __name__ == "__main__":
 
     train_ds = DualSequenceDataset(train_df["wt"].to_list(), train_df["mut"].to_list(), train_df["label"].to_list())
     test_ds = DualSequenceDataset(test_df["wt"].to_list(), test_df["mut"].to_list(), test_df["label"].to_list())
-    # dl_train = DataLoader(train_ds, batch_sz = 2, shufflle = False)
-    # dl_test = DataLoader(test_ds, batch_sz = 2, shufflle = False)
 
     training_args = TrainingArguments(
         per_device_train_batch_size=1,
@@ -189,12 +192,14 @@ if __name__ == "__main__":
         output_dir="out"
     )
 
-    trainer = Trainer(
+    trainer = MyTrainer(
         model=model,  # the instantiated 🤗 Transformers model to be trained
         args=training_args,  # training arguments, defined above
         train_dataset=train_ds,  # training dataset
         eval_dataset=test_ds,  # evaluation dataset
         compute_metrics=compute_metrics
-    )  
+    )
 
     _ = trainer.train()
+    
+    trainer.evaluate()
