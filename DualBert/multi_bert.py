@@ -128,8 +128,9 @@ class MyTrainer(Trainer):
             
                 to_return = {k : torch.stack(v) for (k,v) in key_to_values.items()}
                 res[j] = to_return
-        collated = {"input" : (res[0], res[1]), "label" : torch.Tensor(y_list)}
-        return collated
+        
+        # Evaluate loop assumes this returns a tuple, we had it as a dict before 
+        return (res[0], res[1]), torch.Tensor(y_list)
     
     def get_train_dataloader(self):
         train_dl = DataLoader(train_ds, shuffle=True, batch_size=4, collate_fn=self.my_collate_fn) 
@@ -140,9 +141,8 @@ class MyTrainer(Trainer):
         return test_dl
     
     def compute_loss(self, model, inputs):
-        x = inputs["input"] # tuple 
-        labels = inputs["label"] # label 
-       
+        (x, labels) = inputs # tuple : x is also a tuple (input_wt, input_mut), labels is a tensor  
+        
         logits = model(x)
 
         loss_fct = nn.CrossEntropyLoss()
