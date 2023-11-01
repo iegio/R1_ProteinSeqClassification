@@ -19,13 +19,13 @@ import copy
 from datasets import load_dataset
 from datasets import load_metric
  
-def tokenize_data(data):
+def tokenize_data(data, device="cuda"):
     tokens1 = data["wt"].apply(
-        lambda x: tokenizer(x.split(" "), is_split_into_words=True,  return_tensors = "pt", padding="max_length", max_length=512)
+        lambda x: tokenizer(x.split(" "), is_split_into_words=True,  return_tensors = "pt", padding="max_length", max_length=512).to(device)
     )
 
     tokens2 = data["mut"].apply(
-        lambda x: tokenizer(x.split(" "), is_split_into_words=True, return_tensors = "pt", padding="max_length", max_length=512)
+        lambda x: tokenizer(x.split(" "), is_split_into_words=True, return_tensors = "pt", padding="max_length", max_length=512).to(device)
     )
 
     return tokens1, tokens2
@@ -33,7 +33,6 @@ def tokenize_data(data):
 metric = load_metric("accuracy")
 
 def compute_metrics(eval_pred):
-    print("here")
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
@@ -129,7 +128,7 @@ class MyTrainer(Trainer):
                 to_return = {k : torch.stack(v) for (k,v) in key_to_values.items()}
                 res[j] = to_return
         
-        # Evaluate loop assumes this returns a tuple, we had it as a dict before 
+        # Evaluate loop assumes this returns a tuple, we had it as a dict before
         return (res[0], res[1]), torch.Tensor(y_list)
     
     def get_train_dataloader(self):
@@ -177,8 +176,8 @@ if __name__ == "__main__":
     test_df = pd.read_csv("data/test_df.csv")
 
     # tokenize
-    train_df["wt"], train_df["mut"] = tokenize_data(train_df)
-    test_df["wt"], test_df["mut"] = tokenize_data(test_df)
+    train_df["wt"], train_df["mut"] = tokenize_data(train_df, device)
+    test_df["wt"], test_df["mut"] = tokenize_data(test_df, device)
 
     train_ds = DualSequenceDataset(train_df["wt"].to_list(), train_df["mut"].to_list(), train_df["label"].to_list())
     test_ds = DualSequenceDataset(test_df["wt"].to_list(), test_df["mut"].to_list(), test_df["label"].to_list())
@@ -201,5 +200,26 @@ if __name__ == "__main__":
     )
 
     _ = trainer.train()
-    
-    trainer.evaluate()
+
+
+test_dl = trainer.get_test_dataloader()
+with torch.no_grad():
+    model.eval()
+
+    labels = []
+    logits = []
+    for batch in test_dl:
+        (inputs_1, inputs_2) = batch[0]
+        batch_labels = batch[1].cpu()
+        batch_predictions = model((inputs_1, inputs_2)).cpu()
+        labels.extend(batch_labels)
+        logits.extend(batch_predictions)
+
+    # do compute metrics here
+    predictions = np.argmax(logits, axis=-1)
+
+    np.save("out/labels", labels)
+    np.save("out/logits", logits)
+    np.save("out/predictions", predictions)
+
+
