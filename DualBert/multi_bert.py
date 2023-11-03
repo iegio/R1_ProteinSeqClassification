@@ -60,21 +60,13 @@ class DualBertForClassification(nn.Module):
         # wild type input, mutant input
         (x_a, x_b) = x
         
-        # concatenate
-        x = torch.cat(
-            (
-                self.bert_model_wt(**x_a).last_hidden_state,
-                self.bert_model_mutant(**x_b).last_hidden_state
-            ), 
-            1
-        )
-        
-        # apply layer
+        x1 = self.bert_model_wt(**x_a).last_hidden_state
+        x2 = self.bert_model_mutant(**x_b).last_hidden_state        
+        x = torch.cat([x1, x2], 2)
         x = torch.tanh(self.linear1(x))
-
-        # do transformation
-        x = x.view(list(x.shape)[0], -1)
         x = torch.tanh(self.linear2(x))
+        x = torch.mean(x, dim = 2)
+        x = torch.tanh(self.linear3(x))
         return x
     
 
@@ -211,7 +203,7 @@ with torch.no_grad():
     for batch in test_dl:
         (inputs_1, inputs_2) = batch[0]
         batch_labels = batch[1].cpu()
-        batch_predictions = model((inputs_1, inputs_2)).cpu()
+        batch_predictions = model((inputs_1, inputs_2)).cpu().detach().numpy()
         labels.extend(batch_labels)
         logits.extend(batch_predictions)
 
@@ -221,5 +213,35 @@ with torch.no_grad():
     np.save("out/labels", labels)
     np.save("out/logits", logits)
     np.save("out/predictions", predictions)
+
+    # converts logits to probablilities, won't affect our metrics below but 
+    # may be useful in future cases
+    
+    probabilites = torch.nn.functional.softmax(
+        torch.tensor(np.array(logits)), 
+        dim=1
+    ).cpu().detach().numpy()
+
+    prob_of_positive = probabilites[:, 1]
+
+    auroc = roc_auc_score(labels, prob_of_positive)
+
+    tn, fp, fn, tp = confusion_matrix(labels, predictions, labels=[0,1]).ravel()
+
+    total = np.sum([tn, fp, fn, tp])
+    print("Accuracy : ",  (tp + tn) / total)
+    print("Precision : ",  tp / (tp + fp))
+    print("Recall : ",  tp / (tp + fn))
+    print("AUROC : ",  auroc)
+
+    # From James's commit: 
+    # Accuracy :  0.7590361445783133
+    # Precision :  0.7446808510638298
+    # Recall :  0.813953488372093
+    # AUROC :  0.8540697674418605
+
+    
+
+
 
 
