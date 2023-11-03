@@ -52,9 +52,11 @@ class DualBertForClassification(nn.Module):
         self.bert_model_mutant = bert_model_b
         
         # Define the feed-forward layer
-        self.linear1 = nn.Linear(1024, 4096)
-        
-        self.linear2 = nn.Linear(1024 * 4096, self.num_labels)
+        self.linear1 = nn.Linear(2048, 1024)
+
+        self.linear2 = nn.Linear(1024, 1024)
+
+        self.linear3 = nn.Linear(512, self.num_labels)
 
     def forward(self, x):
         # wild type input, mutant input
