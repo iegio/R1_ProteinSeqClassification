@@ -9,6 +9,7 @@ from transformers import (
 
 import pandas as pd
 import numpy as np
+from sklearn.metrics import roc_auc_score
 
 import torch 
 from torch.utils.data import DataLoader, Dataset 
@@ -18,7 +19,9 @@ from torch.optim import AdamW
 import copy
 from datasets import load_dataset
 from datasets import load_metric
- 
+from sklearn.metrics import confusion_matrix
+metric = load_metric("accuracy")
+
 def tokenize_data(data, device="cuda"):
     tokens1 = data["wt"].apply(
         lambda x: tokenizer(x.split(" "), is_split_into_words=True,  return_tensors = "pt", padding="max_length", max_length=512).to(device)
@@ -29,8 +32,6 @@ def tokenize_data(data, device="cuda"):
     )
 
     return tokens1, tokens2
-
-metric = load_metric("accuracy")
 
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
@@ -242,8 +243,12 @@ with torch.no_grad():
     # Recall :  0.813953488372093
     # AUROC :  0.8540697674418605
 
-    
-
-
-
-
+    # From Masha's commit:
+    # Accuracy:
+    # 0.7710843373493976
+    # Precision:
+    # 0.7727272727272727
+    # Recall:
+    # 0.7906976744186046
+    # AUROC:
+    # 0.8476744186046512
