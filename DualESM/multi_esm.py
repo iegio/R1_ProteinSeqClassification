@@ -17,9 +17,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset 
 import torch.nn.functional as F
 import torch.nn as nn 
-from torch.optim import AdamW
 import copy
-from datasets import load_dataset
 from datasets import load_metric
 from sklearn.metrics import confusion_matrix
 
@@ -50,7 +48,7 @@ class DualEsmForClassification(nn.Module):
     def __init__(self, esm_model_a, esm_model_b):
         super(DualEsmForClassification, self).__init__()
         self.num_labels = 2
-        self.batch_size = 4
+        self.batch_size = 2
 
         self.esm_model_wt = esm_model_a
         self.esm_model_mutant = esm_model_b
