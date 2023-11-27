@@ -20,19 +20,27 @@ def precision(labels, predictions):
 def recall(labels, predictions):
     return recall_score(labels, predictions)
 
-path = "DualESM/out/esm1b/"
+path = "SingleBert/out/lora/"
+
 labels = np.load(path + "labels.npy")
 logits = np.load(path + "logits.npy")
 predictions = np.load(path + "predictions.npy")
 
-print("accuracy:")
+print("labels")
+print(labels)
+print("predictions")
+print(predictions)
+print("logits")
+print(logits)
+
+print("Accuracy:")
 print(accuracy(labels, predictions))
+
+print("Precision:")
+print(precision(labels, predictions))
+
+print("Recall:")
+print(recall(labels, predictions))
 
 print("AUROC:")
 print(AUROC(labels, logits))
-
-print("precision:")
-print(precision(labels, predictions))
-
-print("recall:")
-print(recall(labels, predictions))

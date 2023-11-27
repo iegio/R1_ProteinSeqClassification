@@ -33,15 +33,15 @@ def tokenize_data(data, device="cuda"):
 
     return tokens1, tokens2
 
-def compute_metrics(eval_pred):
-    logits, labels = eval_pred
-    predictions = np.argmax(logits, axis=-1)
+# def compute_metrics(eval_pred):
+#     logits, labels = eval_pred
+#     predictions = np.argmax(logits, axis=-1)
 
-    np.save("out/logits", logits)
-    np.save("out/labels", labels)
-    np.save("out/predictions", predictions)
+#     np.save("out/dualbert/logits", logits)
+#     np.save("out/dualbert/labels", labels)
+#     np.save("out/dualbert/predictions", predictions)
 
-    return metric.compute(predictions=predictions, references=labels)
+#     return metric.compute(predictions=predictions, references=labels)
 
 class DualBertForClassification(nn.Module):
     def __init__(self, bert_model_a, bert_model_b):
@@ -167,8 +167,18 @@ if __name__ == "__main__":
     model = DualBertForClassification(model1, model2).to(device)
 
     # load datasets
-    train_df = pd.read_csv("data/train_df.csv")
-    test_df = pd.read_csv("data/test_df.csv")
+    genesplit = False
+    my_path = ""
+    if(genesplit):
+        my_path = "../data/genesplit/dual/"
+    else:
+        my_path = "../data/mixed/dual/"
+
+    train_path = my_path + "train.csv"
+    test_path = my_path + "test.csv"
+
+    train_df = pd.read_csv(train_path)
+    test_df = pd.read_csv(test_path)
 
     # tokenize
     train_df["wt"], train_df["mut"] = tokenize_data(train_df, device)
@@ -191,7 +201,7 @@ if __name__ == "__main__":
         args=training_args,  # training arguments, defined above
         train_dataset=train_ds,  # training dataset
         eval_dataset=test_ds,  # evaluation dataset
-        compute_metrics=compute_metrics
+        # compute_metrics=compute_metrics
     )
 
     _ = trainer.train()
@@ -213,9 +223,9 @@ with torch.no_grad():
     # do compute metrics here
     predictions = np.argmax(logits, axis=-1)
 
-    np.save("out/labels", labels)
-    np.save("out/logits", logits)
-    np.save("out/predictions", predictions)
+    np.save("out/dualbert/labels", labels)
+    np.save("out/dualbert/logits", logits)
+    np.save("out/dualbert/predictions", predictions)
 
     # converts logits to probablilities, won't affect our metrics below but 
     # may be useful in future cases
