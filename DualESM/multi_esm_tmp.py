@@ -51,7 +51,7 @@ class DualEsmForClassification(nn.Module):
         self.esm_model_mutant = esm_model_b
         
         # Define the feed-forward layer
-        self.linear1 = nn.Linear(2560, 1024)
+        self.linear1 = nn.Linear(5120, 1024)
         # self.linear1 = nn.Linear(2048, 1024)
 
         self.linear2 = nn.Linear(1024, 1024)
@@ -150,8 +150,8 @@ if __name__ == "__main__":
     global TYPE_ID_PAD_TOKEN
     global DOMAINS_PAD_TOKEN
 
-    model_name = "facebook/esm1b_t33_650M_UR50S"
-    # model_name = "facebook/esm2_t36_3B_UR50D"
+    # model_name = "facebook/esm1b_t33_650M_UR50S"
+    model_name = "facebook/esm2_t36_3B_UR50D"
 
     tokenizer = EsmTokenizer.from_pretrained(model_name, do_lower_case=False, num_labels=2)
     
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     model = DualEsmForClassification(model1, model2).to(device)
 
     # load datasets
-    genesplit = False
+    genesplit = True
     my_path = ""
     if(genesplit):
         my_path = "../data/genesplit_balanced/dual/"
@@ -221,10 +221,10 @@ with torch.no_grad():
 
     # do compute metrics here
     predictions = np.argmax(logits, axis=-1)
-
-    np.save("out/esm1b_balanced/labels", labels)
-    np.save("out/esm1b_balanced/logigs", logits)
-    np.save("out/esm1b_balanced/predictions", predictions)
+    print("balanced genesplit")
+    np.save("out/esm1b_balanced_genesplit/labels", labels)
+    np.save("out/esm1b_balanced_genesplit/logigs", logits)
+    np.save("out/esm1b_balanced_genesplit/predictions", predictions)
 
     # converts logits to probablilities, won't affect our metrics below but 
     # may be useful in future cases

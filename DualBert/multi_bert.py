@@ -53,7 +53,7 @@ class DualBertForClassification(nn.Module):
         self.bert_model_mutant = bert_model_b
         
         # Define the feed-forward layer
-        self.linear1 = nn.Linear(2048, 1024)
+        # self.linear1 = nn.Linear(2048, 1024)
 
         self.linear2 = nn.Linear(1024, 1024)
 
@@ -64,9 +64,12 @@ class DualBertForClassification(nn.Module):
         (x_a, x_b) = x
         
         x1 = self.bert_model_wt(**x_a).last_hidden_state
-        x2 = self.bert_model_mutant(**x_b).last_hidden_state        
-        x = torch.cat([x1, x2], 2)
-        x = torch.tanh(self.linear1(x))
+        x2 = self.bert_model_mutant(**x_b).last_hidden_state  
+
+        # x = torch.cat([x1, x2], 2)
+        x = x2 - x1
+
+        # x = torch.tanh(self.linear1(x))
         x = torch.tanh(self.linear2(x))
         x = torch.mean(x, dim = 2)
         x = torch.tanh(self.linear3(x))
@@ -127,11 +130,11 @@ class MyTrainer(Trainer):
         return (res[0], res[1]), torch.Tensor(y_list)
     
     def get_train_dataloader(self):
-        train_dl = DataLoader(train_ds, shuffle=True, batch_size=4, collate_fn=self.my_collate_fn) 
+        train_dl = DataLoader(train_ds, shuffle=False, batch_size=4, collate_fn=self.my_collate_fn) 
         return train_dl
     
     def get_test_dataloader(self):
-        test_dl = DataLoader(test_ds, shuffle=True, batch_size=4, collate_fn=self.my_collate_fn) 
+        test_dl = DataLoader(test_ds, shuffle=False, batch_size=4, collate_fn=self.my_collate_fn) 
         return test_dl
     
     def compute_loss(self, model, inputs):
@@ -167,12 +170,12 @@ if __name__ == "__main__":
     model = DualBertForClassification(model1, model2).to(device)
 
     # load datasets
-    genesplit = False
+    genesplit = True
     my_path = ""
     if(genesplit):
-        my_path = "../data/genesplit/dual/"
+        my_path = "../data/genesplit_balanced/dual/"
     else:
-        my_path = "../data/mixed/dual/"
+        my_path = "../data/mixed_balanced/dual/"
 
     train_path = my_path + "train.csv"
     test_path = my_path + "test.csv"
@@ -223,9 +226,9 @@ with torch.no_grad():
     # do compute metrics here
     predictions = np.argmax(logits, axis=-1)
 
-    np.save("out/dualbert/labels", labels)
-    np.save("out/dualbert/logits", logits)
-    np.save("out/dualbert/predictions", predictions)
+    np.save("out/genesplit_balanced/labels", labels)
+    np.save("out/genesplit_balanced/logits", logits)
+    np.save("out/genesplit_balanced/predictions", predictions)
 
     # converts logits to probablilities, won't affect our metrics below but 
     # may be useful in future cases

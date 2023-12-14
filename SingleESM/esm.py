@@ -19,9 +19,9 @@ def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
-    np.save("out/esm2/logits", logits)
-    np.save("out/esm2/labels", labels)
-    np.save("out/esm2/predictions", predictions)
+    np.save("out/esm1b_balanced/logits", logits)
+    np.save("out/esm1b_balanced/labels", labels)
+    np.save("out/esm1b_balanced/predictions", predictions)
 
     return metric.compute(predictions=predictions, references=labels)
 
@@ -38,8 +38,8 @@ from transformers import (
     Trainer
 )
 
-model_name = "facebook/esm2_t36_3B_UR50D"
-# model_name = "facebook/esm1b_t33_650M_UR50S"
+# model_name = "facebook/esm2_t36_3B_UR50D"
+model_name = "facebook/esm1b_t33_650M_UR50S"
 
 tokenizer = EsmTokenizer.from_pretrained(model_name, do_lower_case=False)
 model = EsmForSequenceClassification.from_pretrained(model_name, num_labels = 2)
@@ -52,9 +52,9 @@ model.to(device)
 genesplit = False
 my_path = ""
 if(genesplit):
-    my_path = "../data/genesplit/single/"
+    my_path = "../data/genesplit_balanced/single/"
 else:
-    my_path = "../data/mixed/single/"
+    my_path = "../data/mixed_balanced/single/"
 
 train_path = my_path + "train.csv"
 test_path = my_path + "test.csv"

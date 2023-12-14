@@ -8,7 +8,9 @@ import numpy as np
 from torch import nn
 import time
 from peft import get_peft_config, PeftModel, PeftConfig, get_peft_model, LoraConfig, TaskType
-
+from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
+from scipy.special import softmax
+from sklearn.metrics import confusion_matrix
 
 def tokenize_data(data):
     return tokenizer(data["sequence"], padding="max_length", max_length=512)
@@ -19,9 +21,23 @@ def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
-    np.save("out/genesplit/logits", logits)
-    np.save("out/genesplit/labels", labels)
-    np.save("out/genesplit/predictions", predictions)
+    probabilites = torch.nn.functional.softmax(torch.tensor(np.array(logits)), dim=1).cpu().detach().numpy()
+
+    prob_of_positive = probabilites[:, 1]
+
+    auroc = roc_auc_score(labels, prob_of_positive)
+
+    tn, fp, fn, tp = confusion_matrix(labels, predictions, labels=[0,1]).ravel()
+
+    total = np.sum([tn, fp, fn, tp])
+    print("Accuracy : ",  (tp + tn) / total)
+    print("Precision : ",  tp / (tp + fp))
+    print("Recall : ",  tp / (tp + fn))
+    print("AUROC : ",  auroc)
+
+    # np.save("out/bert_balanced/logits", logits)
+    # np.save("out/bert_balanced/labels", labels)
+    # np.save("out/bert_balanced/predictions", predictions)
 
     return metric.compute(predictions=predictions, references=labels)
 
@@ -58,9 +74,9 @@ model.to(device)
 genesplit = True
 my_path = ""
 if(genesplit):
-    my_path = "../data/genesplit/single/"
+    my_path = "../data/genesplit_balanced/single/"
 else:
-    my_path = "../data/mixed/single/"
+    my_path = "../data/mixed_balanced/single/"
 
 train_path = my_path + "train.csv"
 test_path = my_path + "test.csv"

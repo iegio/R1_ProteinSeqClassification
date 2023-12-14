@@ -1,104 +1,117 @@
+import argparse
+import os
+
 import torch
-import datasets
+from torch.optim import AdamW
+from torch.utils.data import DataLoader
+from peft import (
+    get_peft_config,
+    get_peft_model,
+    get_peft_model_state_dict,
+    set_peft_model_state_dict,
+    LoraConfig,
+    PeftType,
+    PrefixTuningConfig,
+    PromptEncoderConfig,
+)
+
+import evaluate
 from datasets import load_dataset
-import transformers
-from torch.utils.data import Dataset, DataLoader
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup, set_seed
+from tqdm import tqdm
 from datasets import load_metric
-import numpy as np
-from torch import nn
-import time
-from peft import get_peft_config, PeftModel, PeftConfig, get_peft_model, LoraConfig, TaskType
 
+batch_size = 32
+model_name_or_path = "Rostlab/prot_bert_bfd"
+task = "mrpc"
+peft_type = PeftType.LORA
+device = "cuda"
+num_epochs = 20
 
-lr = 1e-3
-batch_size = 16
-num_epochs = 10 
+peft_config = LoraConfig(task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
+lr = 3e-4
 
-def tokenize_data(data):
-    return tokenizer(data["sequence"], padding="max_length", max_length=512)
+if any(k in model_name_or_path for k in ("gpt", "opt", "bloom")):
+    padding_side = "left"
+else:
+    padding_side = "right"
 
+tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, padding_side=padding_side)
+
+# if getattr(tokenizer, "pad_token_id") is None:
+#     tokenizer.pad_token_id = tokenizer.eos_token_id
+
+my_datasets = load_dataset('csv', data_files={'train': "../data/mixed/single/tmp_train.csv", 'test': "../data/mixed/single/tmp_test.csv"})
 metric = load_metric("accuracy")
 
-def compute_metrics(eval_pred):
-    logits, labels = eval_pred
-    predictions = np.argmax(logits, axis=-1)
+def tokenize_function(data):
+    return tokenizer(data["sequence"], padding="max_length", max_length=512)
 
-    np.save("out/lora/logits", logits)
-    np.save("out/lora/labels", labels)
-    np.save("out/lora/predictions", predictions)
+# def tokenize_function(examples):
+#     # max_length=None => use the model max length (it's actually the default)
+#     outputs = tokenizer(examples["sentence1"], examples["sentence2"], truncation=True, max_length=None)
+#     return outputs
 
-    return metric.compute(predictions=predictions, references=labels)
 
-from transformers import (
-    AutoModelForTokenClassification,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    DataCollatorForTokenClassification,
-    TrainingArguments,
-    Trainer,
+tokenized_datasets = my_datasets.map(
+    tokenize_function,
+    batched=True,
+    remove_columns=["Unnamed: 0", "identifier", "mut", "gene"],
 )
 
-tokenizer = AutoTokenizer.from_pretrained("Rostlab/prot_bert_bfd")
+# We also rename the 'label' column to 'labels' which is the expected name for labels by the models of the
+# transformers library
+tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
 
-model = AutoModelForSequenceClassification.from_pretrained(
-    "Rostlab/prot_bert_bfd",
-     num_labels = 2
-)
+# def collate_fn(examples):
+#     return tokenizer.pad(examples, padding="longest", return_tensors="pt")
 
-peft_config = LoraConfig(
-    task_type=TaskType.SEQ_CLS, inference_mode=False, r=8, lora_alpha=8, lora_dropout=0.1, bias="all"
-)
 
+# Instantiate dataloaders.
+train_dataloader = DataLoader(tokenized_datasets["train"], shuffle=True, batch_size=batch_size)
+eval_dataloader = DataLoader(tokenized_datasets["test"], shuffle=False, batch_size=batch_size)
+
+model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path, return_dict=True)
 model = get_peft_model(model, peft_config)
-# model.print_trainable_parameters()
-# trainable params: 2,308,098 || all params: 421,901,316 || trainable%: 0.5470705855774103
+model.print_trainable_parameters()
+model
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+optimizer = AdamW(params=model.parameters(), lr=lr)
+
+# Instantiate scheduler
+lr_scheduler = get_linear_schedule_with_warmup(
+    optimizer=optimizer,
+    num_warmup_steps=0.06 * (len(train_dataloader) * num_epochs),
+    num_training_steps=(len(train_dataloader) * num_epochs),
+)
+
 model.to(device)
 
-# load datasets
-genesplit = False
-my_path = ""
-if(genesplit):
-    my_path = "../data/genesplit/single/"
-else:
-    my_path = "../data/mixed/single/"
 
-train_path = my_path + "train.csv"
-test_path = my_path + "test.csv"
-dataset = load_dataset('csv', data_files={'train': train_path, 'test': test_path})
+for epoch in range(num_epochs):
+    model.train()
+    for step, batch in enumerate(tqdm(train_dataloader)):
+        # batch.to(device)
+        outputs = model(**batch)
+        loss = outputs.loss
+        loss.backward()
+        optimizer.step()
+        lr_scheduler.step()
+        optimizer.zero_grad()
 
-# tokenize
-dataset = dataset.map(tokenize_data, batched=True)
+    model.eval()
+    for step, batch in enumerate(tqdm(eval_dataloader)):
+        # batch.to(device)
+        with torch.no_grad():
+            outputs = model(**batch)
+        predictions = outputs.logits.argmax(dim=-1)
+        predictions, references = predictions, batch["labels"]
+        metric.add_batch(
+            predictions=predictions,
+            references=references,
+        )
 
-# remove columns
-dataset = dataset.remove_columns(["Unnamed: 0", "identifier", "mut", "gene"])
+    eval_metric = metric.compute()
+    print(f"epoch {epoch}:", eval_metric)
 
-# split
-df_train = dataset["train"].shuffle(seed=10)
-df_test = dataset["test"].shuffle(seed=10)
 
-training_args = TrainingArguments(
-    output_dir="out",
-    learning_rate=lr,
-    per_device_train_batch_size=batch_size,
-    per_device_eval_batch_size=batch_size,
-    num_train_epochs=num_epochs,
-    weight_decay=0.01,
-    evaluation_strategy="no",
-    save_strategy="no",
-    load_best_model_at_end=True,
-)
-
-trainer = Trainer(
-    model=model,  # the instantiated 🤗 Transformers model to be trained
-    args=training_args,  # training arguments, defined above
-    train_dataset=df_train,  # training dataset
-    eval_dataset=df_test,  # evaluation dataset
-    tokenizer=tokenizer,
-    compute_metrics=compute_metrics
-)
-
-_ = trainer.train()
-
-trainer.evaluate()

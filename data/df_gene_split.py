@@ -6,7 +6,6 @@ import math
 random.seed(123)
 
 def split_df(df, min_thresh, max_thresh):
-    goal_length = min_thresh * df.shape[0]
     gene_names_original = df["gene"].unique()
 
     curr_length = df.shape[0]
@@ -36,16 +35,16 @@ def split_df(df, min_thresh, max_thresh):
     return train_df, test_df
 
 
-df = pd.concat([pd.read_csv("mixed/dual/test.csv", index_col = 0), pd.read_csv("mixed/dual/train.csv", index_col = 0)], ignore_index=True)
+df = pd.concat([pd.read_csv("mixed_balanced/single/test.csv", index_col = 0), pd.read_csv("mixed_balanced/single/train.csv", index_col = 0)], ignore_index=True)
 
 train_len = 0.0
 total_len = df.shape[0]
-min_thresh = 0.1
+min_thresh = 0.15
 max_thresh = 0.2
 
 train_df, test_df = split_df(df, min_thresh, max_thresh)
 
 print(float(test_df.shape[0])/(test_df.shape[0] + train_df.shape[0]))
 
-test_df.to_csv("genesplit/dual/test.csv")
-train_df.to_csv("genesplit/dual/train.csv")
+test_df.to_csv("genesplit_balanced/single/test.csv")
+train_df.to_csv("genesplit_balanced/single/train.csv")
